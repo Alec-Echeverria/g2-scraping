@@ -17,7 +17,7 @@ El sistema está preparado para entornos reales donde existen mecanismos anti-bo
 La solución está basada en una combinación de:
 
 * **Clean Architecture**
-* Principios inspirados en **DDD (Domain-Driven Design)** (no completo)
+* Principios inspirados en **DDD (Domain-Driven Design)**
 * Aplicación pragmática de principios **SOLID**
 
 ### 🔹 Capas del sistema
@@ -49,7 +49,7 @@ Se separan responsabilidades en capas desacopladas:
 
 ### 🔹 DDD
 
-No se implementa DDD completo, ya que:
+Se implementa DDD parcial, ya que:
 
 * No existen entidades de dominio complejas
 * No hay aggregates ni reglas de negocio sofisticadas
