@@ -367,14 +367,6 @@ El sistema permite:
 
 ---
 
-## Mejoras futuras
-
-* Circuit breaker
-* Paralelización controlada
-* Exportación a base de datos
-
----
-
 ## Conclusión
 
 Se desarrolló una solución robusta, desacoplada y resiliente, capaz de mantener operaciones de scraping en condiciones adversas, priorizando:
