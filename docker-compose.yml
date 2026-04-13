@@ -1,0 +1,28 @@
+services:
+  bot:
+      build:
+        context: ./bot
+      image: bot:latest
+      container_name: g2_bot
+      deploy:
+        restart_policy:
+          condition: on-failure
+        resources:
+          limits:
+            memory: 1536M
+          reservations:
+            memory: 1536M
+      volumes:
+        - /etc/localtime:/etc/localtime:ro
+        - /etc/timezone:/etc/timezone:ro
+      networks:
+        - g2_net
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "10m"
+          max-file: "3"
+
+networks:
+  g2_net:
+    driver: bridge

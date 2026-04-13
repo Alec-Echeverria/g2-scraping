@@ -12,23 +12,19 @@ from pydoll.interactions.mouse import MouseTimingConfig
 from app.domain.interfaces.IBrowserManager import IBrowserManager
 
 class BrowserManager(IBrowserManager):
-    def __init__(self):
+    def __init__(self, proxies):
         self._tab = None
         self._browser = None
         self._started = False
         self._profileDir = None
         self.Key = Key
         self._lock = asyncio.Lock()
-        self._proxies = [
-            # None,
-            "http://154.53.34.203:8001",
-            "http://154.53.34.203:8002",
-        ]
+        self._proxies = proxies
         self._proxyIndex = 0
         self._currentProxy = None
-        self._repeatCount = 3
+        self._repeatCount = 2
         self._currentRepeat = 0
-
+        
     @property
     def isStarted(self) -> bool:
         return self._started and self._browser is not None
@@ -98,12 +94,12 @@ class BrowserManager(IBrowserManager):
                 logging.info("🌐 Iniciando navegador Pydoll...")
 
                 options = ChromiumOptions()
-                # options.binary_location = "/usr/bin/chromium-browser"
                 options.binary_location = "/usr/bin/microsoft-edge"
                 
                 # PROXY
                 proxy = self._getNextProxy()
                 self._currentProxy = proxy
+                
                 options.add_argument("--password-store=basic")
 
                 logging.info(f"🌐 Usando proxy: {proxy if proxy else 'LOCAL'}")
@@ -146,10 +142,6 @@ class BrowserManager(IBrowserManager):
                     """
                 )
                 self._profileDir = profileDir
-                
-                queryUrl ="https://procesojudicial.ramajudicial.gov.co/Justicia21/Administracion/Ciudadanos/frmConsulta"
-                await self._tab.go_to(queryUrl)
-
                 
                 self._tab.mouse.timing = MouseTimingConfig(
                     fitts_a=0.11,
