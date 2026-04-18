@@ -22,11 +22,34 @@ class proxiesSettings(EnvConfig):
 class ScraperSettings(EnvConfig):
     url: str  = Field(..., alias="BASE_URL")
     attemps:int = Field(..., alias="ATTEMPS")
+    
+class NavigatorSettings(EnvConfig):
+    binaryLocation: str  = Field(..., alias="BINARY_LOCATION")
+    remoteUrl: Optional[str] = Field(..., alias="REMOTE_URL")
+    extraArgs: List[str] = Field(default_factory=list, alias="EXTRA_ARGS")
+    
+    @field_validator("remoteUrl", mode="before")
+    @classmethod
+    def parse_remote_url(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return v
+        return v
 
+    @field_validator("extraArgs", mode="before")
+    @classmethod
+    def parse_extra_args(cls, v):
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+    
 class Settings(EnvConfig):
     file: FileSettings = FileSettings()
     proxy: proxiesSettings = proxiesSettings()
     scraper:ScraperSettings = ScraperSettings()
+    nav: NavigatorSettings = NavigatorSettings()
     
 def loadConfig() -> Settings:
     return Settings()

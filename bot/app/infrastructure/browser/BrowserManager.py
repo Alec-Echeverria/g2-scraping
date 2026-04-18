@@ -11,20 +11,24 @@ from pydoll.interactions.mouse import MouseTimingConfig
 
 from app.domain.interfaces.IBrowserManager import IBrowserManager
 
+
 class BrowserManager(IBrowserManager):
-    def __init__(self, proxies):
+    def __init__(self, proxies: list, binaryLocation: str = None, remoteUrl: str = None, extraArgs: list = None):
+        self.Key = Key
         self._tab = None
+        self._proxyIndex = 0
         self._browser = None
         self._started = False
+        self._repeatCount = 1
         self._profileDir = None
-        self.Key = Key
-        self._lock = asyncio.Lock()
         self._proxies = proxies
-        self._proxyIndex = 0
-        self._currentProxy = None
-        self._repeatCount = 2
         self._currentRepeat = 0
-        
+        self._currentProxy = None
+        self._lock = asyncio.Lock()
+        self.remote_url = remoteUrl
+        self.extra_args = extraArgs or []
+        self.binaryLocation = binaryLocation
+
     @property
     def isStarted(self) -> bool:
         return self._started and self._browser is not None
@@ -38,18 +42,19 @@ class BrowserManager(IBrowserManager):
             self._proxyIndex = (self._proxyIndex + 1) % len(self._proxies)
 
         return proxy
-    
+
     async def restart(self):
         logging.warning("♻️ Reiniciando navegador completo...")
 
-        # Cerrar navegador actual de manera segura
         async with self._lock:
             if self._browser:
                 try:
-                    await asyncio.wait_for(self._browser.__aexit__(None, None, None), timeout=10)
+                    await asyncio.wait_for(
+                        self._browser.__aexit__(None, None, None), timeout=10
+                    )
                     logging.info("🔌 Navegador cerrado correctamente.")
                 except asyncio.TimeoutError:
-                    logging.warning("⚠️ Timeout cerrando el navegador, forzando cleanup.")
+                    logging.warning("🟡 Timeout cerrando el navegador.")
                 except Exception as e:
                     logging.warning(f"No se pudo cerrar el navegador: {e}")
 
@@ -57,30 +62,27 @@ class BrowserManager(IBrowserManager):
                 self._tab = None
                 self._started = False
 
-            # Eliminar perfil temporal
             if self._profileDir and self._profileDir.exists():
                 try:
                     shutil.rmtree(self._profileDir, ignore_errors=True)
-                    await asyncio.sleep(0.3)  # asegurar que el FS libere el handle
+                    await asyncio.sleep(0.3)
                     logging.info("🧹 Perfil temporal eliminado.")
                 except Exception as e:
-                    logging.warning(f"No se pudo eliminar el perfil temporal: {e}")
+                    logging.warning(f"No se pudo eliminar el perfil: {e}")
 
             self._profileDir = None
 
-        # Iniciar nuevo navegador fuera del lock para evitar deadlocks
         try:
             await self.start()
         except Exception as e:
             logging.error(f"🔴 Falló reiniciar el navegador: {e}")
-            # En caso crítico, aseguramos que no queden referencias colgando
             async with self._lock:
                 self._browser = None
                 self._tab = None
                 self._started = False
                 self._profileDir = None
             raise
-        
+
     async def start(self):
         async with self._lock:
             if self._started:
@@ -88,61 +90,63 @@ class BrowserManager(IBrowserManager):
                 return
 
             try:
-                ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"              
-                profileDir = Path(tempfile.mkdtemp(prefix="pydoll_"))
-                
-                logging.info("🌐 Iniciando navegador Pydoll...")
+                logging.info("🌐 Iniciando navegador...")
 
-                options = ChromiumOptions()
-                options.binary_location = "/usr/bin/microsoft-edge"
-                
-                # PROXY
                 proxy = self._getNextProxy()
                 self._currentProxy = proxy
-                
-                options.add_argument("--password-store=basic")
 
-                logging.info(f"🌐 Usando proxy: {proxy if proxy else 'LOCAL'}")
-                
-                # PROXY
-                if proxy:
-                    options.add_argument(f"--proxy-server={proxy}")
+                # MODO REMOTO
+                if self.remote_url:
+                    logging.info(f"~ Conectando a navegador remoto: {self.remote_url}")
+                    browser = await Chrome.connect(self.remote_url)
+                    self._tab = browser
+                    self._profileDir = None
 
-                # PERFIL TEMPORAL
-                options.add_argument(f"--user-data-dir={profileDir}")
+                # MODO LOCAL
+                else:
+                    logging.info(f"~ Conectando a navegador local")
+                    options = ChromiumOptions()
 
-                # USER AGENT ALEATORIO
-                options.add_argument(f"--user-agent={ua}")
+                    if self.binaryLocation:
+                        options.binary_location = self.binaryLocation
 
-                # ANTI-DETECCIÓN
-                options.add_argument("--disable-blink-features=AutomationControlled")
+                    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 
-                # TAMAÑO DE VENTANA
-                options.add_argument("--window-size=1920,1080")
+                    options.add_argument("--password-store=basic")
 
-                # WSL / Docker estabilidad
-                options.add_argument("--disable-dev-shm-usage")
-                options.add_argument("--disable-gpu")
-                options.add_argument("--no-sandbox")
+                    if proxy:
+                        options.add_argument(f"--proxy-server={proxy}")
 
-                # IDIOMA
-                options.add_argument("--lang=es-CO")
-                
-                browser = Chrome(options = options)
+                    logging.info(f"🌐 Usando proxy: {proxy if proxy else 'LOCAL'}")
 
-                # levantar Chrome
-                self._tab = await browser.start()
-                
+                    # Perfil SOLO en local
+                    profileDir = Path(tempfile.mkdtemp(prefix="pydoll_"))
+                    options.add_argument(f"--user-data-dir={profileDir}")
+                    self._profileDir = profileDir
+
+                    # Configurable
+                    options.add_argument(f"--user-agent={ua}")
+                    options.add_argument("--disable-blink-features=AutomationControlled")
+                    options.add_argument("--window-size=1920,1080")
+
+                    # Args externos
+                    for arg in self.extra_args:
+                        options.add_argument(arg)
+
+                    browser = Chrome(options=options)
+                    self._tab = await browser.start()
+
+                # Anti-detección
                 await self._tab.execute_script(
                     """
-                        Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
-                        Object.defineProperty(navigator,'platform',{get:()=>'Win32'});
-                        Object.defineProperty(navigator,'vendor',{get:()=>'Google Inc.'});
-                        window.chrome = {runtime:{}};
+                    Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
+                    Object.defineProperty(navigator,'platform',{get:()=>'Win32'});
+                    Object.defineProperty(navigator,'vendor',{get:()=>'Google Inc.'});
+                    window.chrome = {runtime:{}};
                     """
                 )
-                self._profileDir = profileDir
-                
+
+                # Mouse config
                 self._tab.mouse.timing = MouseTimingConfig(
                     fitts_a=0.11,
                     fitts_b=0.22,
@@ -154,20 +158,18 @@ class BrowserManager(IBrowserManager):
                     max_duration=4.0,
                     frame_interval=0.014,
                 )
-                
-                # SOLO asignar si todo salió bien
+
                 self._browser = browser
                 self._started = True
 
                 logging.info("🔵 BrowserManager iniciado exitosamente.")
 
             except Exception as e:
-                logging.exception(f"🔴 Error crítico iniciando el navegador: {e}")
-                
-                if profileDir and profileDir.exists():
-                    shutil.rmtree(profileDir, ignore_errors=True)
+                logging.exception(f"🔴 Error iniciando navegador: {e}")
 
-                # Cleanup defensivo si algo falló a mitad
+                if self._profileDir and self._profileDir.exists():
+                    shutil.rmtree(self._profileDir, ignore_errors=True)
+
                 if self._browser:
                     try:
                         await self._browser.__aexit__(None, None, None)
@@ -180,12 +182,8 @@ class BrowserManager(IBrowserManager):
 
     async def getBrowser(self):
         if not self.isStarted or not self._tab:
-            raise RuntimeError("BrowserManager no iniciado o tab no disponible")
-        try:
-            return self._tab
-        except Exception as e:
-            logging.error(f"🔴 Error creando nueva tab: {e}")
-            raise
+            raise RuntimeError("BrowserManager no iniciado")
+        return self._tab
 
     async def close(self):
         async with self._lock:
@@ -196,20 +194,18 @@ class BrowserManager(IBrowserManager):
             try:
                 await self._browser.__aexit__(None, None, None)
                 logging.info("🔌 Navegador cerrado correctamente.")
-
             except Exception as e:
-                logging.exception(f"🔴 Error cerrando el navegador: {e}")
+                logging.exception(f"🔴 Error cerrando navegador: {e}")
                 raise
-            
             finally:
                 self._browser = None
                 self._started = False
-                
+
                 if self._profileDir and self._profileDir.exists():
                     try:
                         shutil.rmtree(self._profileDir, ignore_errors=True)
-                        logging.info("🧹 Perfil temporal eliminado.")
+                        logging.info("🧹 Perfil eliminado.")
                     except Exception as e:
-                        logging.warning(f"No se pudo eliminar el perfil temporal: {e}")
+                        logging.warning(f"No se pudo eliminar perfil: {e}")
 
                 self._profileDir = None

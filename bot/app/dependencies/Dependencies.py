@@ -28,8 +28,10 @@ class Dependencies(containers.DeclarativeContainer):
     browserManager : providers.Singleton[IBrowserManager] = providers.Singleton(
         BrowserManager,
         proxies = settings.provided.proxy.proxies,
+        binaryLocation = settings.provided.nav.binaryLocation,
+        remoteUrl = settings.provided.nav.remoteUrl,
+        extraArgs = settings.provided.nav.extraArgs,
     )
-    
     
     # Scraper
     scraper : providers.Factory[IScraper] = providers.Factory(
