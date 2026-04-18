@@ -10,10 +10,10 @@ from pydoll.browser.options import ChromiumOptions
 from pydoll.interactions.mouse import MouseTimingConfig
 
 from app.domain.interfaces.IBrowserManager import IBrowserManager
-
+from app.infrastructure.browser.FingerprintGenerator import FingerprintGenerator
 
 class BrowserManager(IBrowserManager):
-    def __init__(self, proxies: list, binaryLocation: str = None, remoteUrl: str = None, extraArgs: list = None):
+    def __init__(self, proxies: list, fingerprintGenerator: FingerprintGenerator, binaryLocation: str = None, remoteUrl: str = None, extraArgs: list = None):
         self.Key = Key
         self._tab = None
         self._proxyIndex = 0
@@ -28,6 +28,7 @@ class BrowserManager(IBrowserManager):
         self.remote_url = remoteUrl
         self.extra_args = extraArgs or []
         self.binaryLocation = binaryLocation
+        self._fingerprintGenerator = fingerprintGenerator
 
     @property
     def isStarted(self) -> bool:
@@ -43,6 +44,60 @@ class BrowserManager(IBrowserManager):
 
         return proxy
 
+    async def _applyFingerprint(self, fp: dict):
+        # Navigator
+        await self._tab.execute_script(f"""
+        Object.defineProperty(navigator, 'platform', {{
+            get: () => '{fp["platform"]}'
+        }});
+
+        Object.defineProperty(navigator, 'language', {{
+            get: () => '{fp["language"]}'
+        }});
+
+        Object.defineProperty(navigator, 'languages', {{
+            get: () => {fp["languages"]}
+        }});
+
+        Object.defineProperty(navigator, 'hardwareConcurrency', {{
+            get: () => {fp["hardwareConcurrency"]}
+        }});
+
+        Object.defineProperty(navigator, 'deviceMemory', {{
+            get: () => {fp["deviceMemory"]}
+        }});
+        """)
+
+        # WebGL
+        await self._tab.execute_script(f"""
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+
+        WebGLRenderingContext.prototype.getParameter = function(parameter) {{
+            if (parameter === 37445) return '{fp["webgl"]["vendor"]}';
+            if (parameter === 37446) return '{fp["webgl"]["renderer"]}';
+            return getParameter.call(this, parameter);
+        }};
+        """)
+
+        # Timezone
+        await self._tab.execute_script(f"""
+        Intl.DateTimeFormat = class extends Intl.DateTimeFormat {{
+            constructor(...args) {{
+                super(...args);
+                return new Proxy(this, {{
+                    get(target, prop) {{
+                        if (prop === 'resolvedOptions') {{
+                            return () => ({{
+                                timeZone: '{fp["timezone"]}'
+                            }});
+                        }}
+                        return target[prop];
+                    }}
+                }});
+            }}
+        }};
+        """)
+    
     async def restart(self):
         logging.warning("♻️ Reiniciando navegador completo...")
 
@@ -84,6 +139,8 @@ class BrowserManager(IBrowserManager):
             raise
 
     async def start(self):
+        fp = self._fingerprintGenerator.generate()
+        
         async with self._lock:
             if self._started:
                 logging.info("🟡 BrowserManager ya estaba iniciado.")
@@ -110,8 +167,8 @@ class BrowserManager(IBrowserManager):
                     if self.binaryLocation:
                         options.binary_location = self.binaryLocation
 
-                    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-
+                    ua = fp["userAgent"]
+                    screen = fp["screen"]    
                     options.add_argument("--password-store=basic")
 
                     if proxy:
@@ -121,13 +178,13 @@ class BrowserManager(IBrowserManager):
 
                     # Perfil SOLO en local
                     profileDir = Path(tempfile.mkdtemp(prefix="pydoll_"))
-                    options.add_argument(f"--user-data-dir={profileDir}")
                     self._profileDir = profileDir
+                    options.add_argument(f"--user-data-dir={profileDir}")
 
                     # Configurable
                     options.add_argument(f"--user-agent={ua}")
                     options.add_argument("--disable-blink-features=AutomationControlled")
-                    options.add_argument("--window-size=1920,1080")
+                    options.add_argument(f"--window-size={screen['width']},{screen['height']}")
 
                     # Args externos
                     for arg in self.extra_args:
@@ -135,16 +192,9 @@ class BrowserManager(IBrowserManager):
 
                     browser = Chrome(options=options)
                     self._tab = await browser.start()
-
-                # Anti-detección
-                await self._tab.execute_script(
-                    """
-                    Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
-                    Object.defineProperty(navigator,'platform',{get:()=>'Win32'});
-                    Object.defineProperty(navigator,'vendor',{get:()=>'Google Inc.'});
-                    window.chrome = {runtime:{}};
-                    """
-                )
+                    
+                    # Aplicacion fingerPrint
+                    await self._applyFingerprint(fp)
 
                 # Mouse config
                 self._tab.mouse.timing = MouseTimingConfig(

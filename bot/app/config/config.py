@@ -44,12 +44,25 @@ class NavigatorSettings(EnvConfig):
         if isinstance(v, str):
             return json.loads(v)
         return v
-    
+
+class FingerprintSettings(EnvConfig):
+    seed: str = Field(..., alias="SEED")
+    osType:str = Field(..., alias="OS_TYPE")
+    regionCode:str = Field(..., alias="REGION_CODE")
+    configPath: Path = Field(..., alias="CONFIG_PATH")
+
 class Settings(EnvConfig):
     file: FileSettings = FileSettings()
     proxy: proxiesSettings = proxiesSettings()
     scraper:ScraperSettings = ScraperSettings()
     nav: NavigatorSettings = NavigatorSettings()
+    fingerprint: FingerprintSettings = FingerprintSettings()
     
 def loadConfig() -> Settings:
     return Settings()
+
+def loadJson(path: Path) -> dict:
+    if not path.exists():
+        raise RuntimeError(f"Fingerprint config not found: {path}")
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
