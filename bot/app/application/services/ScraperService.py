@@ -24,7 +24,7 @@ class ScraperService(IScraperService):
             folderName = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}-{uuid.uuid4().hex[:8]}"
             
             with self.workspace.useFolder(folderName,  self.persistent) as outputDir:
-                rawData = await self.scraper.scraping()
+                rawData = await self.scraper.scraping(outputDir)
                 
                 if rawData:
                     data = [ProductDTO(**item) for item in rawData]
@@ -42,13 +42,12 @@ class ScraperService(IScraperService):
 
                     self.metrics.end(success=True)        
                 else:
-                    self.metrics.end(success=False)
-                    
+                    self.metrics.end(success=False, exceptionCode="EMPTY_RESULT")                    
             logging.info(f"~ Finaliza proceso")
             
         except Exception as e:
             logging.exception(f"🔴 Error procesando mensaje {e}")
-            self.metrics.end(success=False, exception=str(e))
+            self.metrics.end(success=False, exceptionCode=getattr(e, "code", "UNKNOWN"))
         
         finally:
             if self.metrics.shouldReport():

@@ -1,17 +1,52 @@
 import logging
 import asyncio
+from pathlib import Path
+from datetime import datetime
+
 from typing import List, Dict, Any
 
 from app.domain.interfaces.IScraper import IScraper
 from app.domain.interfaces.IBrowserManager import IBrowserManager
 
+from app.domain.exceptions.ScraperException import (
+    ScraperException,
+    BlockException,
+    DOMException,
+    TimeoutException,
+    NetworkException,
+    ProxyException
+)
+
+
 class Scraper(IScraper):
-    def __init__(self, url: str, browserManager: IBrowserManager, retries:int, pages:int):
+    def __init__(self, url: str, browserManager: IBrowserManager, retries: int, pages: int):
         self.url = url
         self.pages = pages
         self.retries = retries
         self.browserManager = browserManager
-    
+
+    async def _captureError(self, tab, folderName: Path, page: int, error: Exception, step: str):
+        try:
+            if not tab:
+                return
+
+            errorCode = getattr(error, "code", "UNKNOWN")
+
+            dirPath: Path = folderName / "errors" / f"page_{page}"
+            dirPath.mkdir(parents=True, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            filePath = dirPath / f"{step}_{errorCode}_{timestamp}.png"
+
+            await tab.take_screenshot(path=str(filePath))
+
+            logging.warning(f"Screenshot saved: {filePath}")
+
+        except Exception as e:
+            logging.warning(f"No se pudo guardar screenshot: {e}")
+
+
     async def _retry(self, fn, *args, **kwargs):
         lastException = None
 
@@ -19,14 +54,42 @@ class Scraper(IScraper):
             try:
                 return await fn(*args, **kwargs)
 
-            except Exception as e:
+            except ScraperException as e:
                 lastException = e
-                logging.warning(f"🟡 Intento {attempt} falló: {e}")
+
+                logging.warning(f"🟡 Attempt {attempt} failed [{e.code}]: {e}")
+
+                if isinstance(e, BlockException):
+                    logging.warning("🚨 BLOQUEO detectado (captcha / IP ban)")
+
+                elif isinstance(e, TimeoutException):
+                    logging.warning("⏱ Timeout detectado")
+
+                elif isinstance(e, DOMException):
+                    logging.warning("🧩 DOM cambió")
+
+                elif isinstance(e, ProxyException):
+                    logging.warning("🌐 Proxy error")
+
+                elif isinstance(e, NetworkException):
+                    logging.warning("📡 Network issue")
 
                 await self.browserManager.restart()
                 await asyncio.sleep(3)
 
-        logging.error("🔴 Todos los reintentos fallaron")
+            except Exception as e:
+                lastException = NetworkException(
+                    str(e),
+                    code="UNKNOWN",
+                    context={"raw": str(e)}
+                )
+
+                logging.warning(f"🟡 Unknown error: {e}")
+
+                await self.browserManager.restart()
+                await asyncio.sleep(3)
+
+        logging.error("🔴 All retries failed")
         raise lastException
 
     async def _getTotalPages(self, tab) -> int:
@@ -44,10 +107,13 @@ class Scraper(IScraper):
             return res["result"]["result"]["value"]
 
         except Exception as e:
-            logging.warning(f"🟡 No se pudo obtener totalPages: {e}")
-            return 1
+            raise TimeoutException(
+                "No se pudo obtener totalPages",
+                code="TIMEOUT",
+                context={"error": str(e)}
+            )
 
-    async def _extractAll(self, tab, page: int) -> List[Dict[str, Any]]:
+    async def _extractAll(self, tab, page: int, folderName: Path) -> List[Dict[str, Any]]:
         results = []
 
         try:
@@ -61,24 +127,19 @@ class Scraper(IScraper):
             logging.info(f"Productos encontrados {len(cards)}")
 
             for i, card in enumerate(cards):
-                title = "UNKNOWN"
 
                 try:
-                    # Evitar Stale
                     cards = await container.find(
                         xpath='.//div[@data-ordered-events-item="products"]',
                         find_all=True
                     )
 
-                    # Protección por si cambió el DOM
                     if i >= len(cards):
                         continue
 
                     card = cards[i]
-                    
-                    titleEl = await card.find(
-                        class_name="product-card__product-name-text"
-                    )
+
+                    titleEl = await card.find(class_name="product-card__product-name-text")
                     title = (await titleEl.text).strip()
 
                     vendorEl = await card.find(
@@ -87,8 +148,7 @@ class Scraper(IScraper):
                         raise_exc=False
                     )
                     vendor = (await vendorEl.text).strip() if vendorEl else None
-                    
-                    # Rating
+
                     rating = None
                     ratingEl = await card.find(
                         xpath='.//span[contains(@class,"fw-semibold")]',
@@ -97,45 +157,55 @@ class Scraper(IScraper):
 
                     if ratingEl:
                         text = (await ratingEl.text).strip()
-
-                        # solo aceptar números tipo 4 o 4.5
                         if text.replace('.', '', 1).isdigit():
                             rating = text
 
-                    # DESCRIPTION
                     descEl = await card.find(
                         class_name="product-listing__paragraph",
                         raise_exc=False
                     )
                     description = (await descEl.text).strip() if descEl else None
 
-                    data = {
+                    results.append({
                         "title": title,
                         "vendor": vendor,
                         "rating": rating,
                         "description": description,
                         "page": page,
                         "index": i
-                    }
-
-                    results.append(data)
+                    })
 
                 except Exception as e:
-                    logging.error(f"🟡 Error en card [page={page} index={i} title={title}] → {e}")
-                    continue
+                    await self._captureError(tab, folderName, page, e, f"card_{i}")
+
+                    raise DOMException(
+                        f"Error extrayendo card page={page} index={i}",
+                        code="DOM_ERROR",
+                        context={
+                            "page": page,
+                            "index": i,
+                            "title": title,
+                            "error": str(e)
+                        }
+                    )
 
         except Exception as e:
-            logging.error(f"🔴 Error en extracción página {page}: {e}")
+            await self._captureError(tab, folderName, page, e, "extract_all")
+
+            raise DOMException(
+                f"Error en extracción página {page}",
+                code="DOM_ERROR",
+                context={"page": page, "error": str(e)}
+            )
 
         return results
-    
+
     async def _loadPage(self, url):
         tab = await self.browserManager.getBrowser()
 
         await tab.go_to(url)
         await tab.find(id="product-cards", timeout=10)
 
-        # Detectar bloqueo
         container = await tab.find(id="product-cards", timeout=5)
         cards = await container.find(
             xpath='.//div[@data-ordered-events-item="products"]',
@@ -143,52 +213,56 @@ class Scraper(IScraper):
         )
 
         if not cards:
-            raise Exception("Posible bloqueo: sin productos")
+            raise BlockException(
+                "No products detected (possible block/captcha)",
+                code="BLOCKED",
+                context={"url": url}
+            )
 
         return tab
 
-    async def _processPage(self, url, page):
+    async def _processPage(self, url, page, folderName: Path):
         tab = await self._retry(self._loadPage, url)
-        return await self._extractAll(tab, page)
+        return await self._extractAll(tab, page, folderName)
 
-    # Scraping 
-    async def scraping(self) -> List[Dict[str, Any]]:
+    async def scraping(self, folderName: Path) -> List[Dict[str, Any]]:
         try:
             allResults: List[Dict[str, Any]] = []
 
-            # Primera carga
             tab = await self._retry(self._loadPage, self.url)
 
             await asyncio.sleep(5)
 
             totalPages = await self._getTotalPages(tab)
-            
+
             if self.pages > totalPages:
                 raise ValueError(
-                    f"Configuración inválida: pages solicitadas ({self.pages}) "
-                    f"es mayor que el total de páginas disponibles ({totalPages})"
+                    f"pages ({self.pages}) > totalPages ({totalPages})"
                 )
-                            
+
             logging.info(f"Total páginas detectadas: {totalPages}")
 
-            # Loop de páginas
             for page in range(1, min(self.pages, totalPages) + 1):
                 url = f"{self.url}?page={page}"
                 logging.info(f"Página: {page}")
 
                 try:
-                    results = await self._processPage(url, page)
-
+                    results = await self._processPage(url, page, folderName)
                     allResults.extend(results)
-
                     await asyncio.sleep(2)
 
+                except ScraperException as e:
+                    logging.error(f"🔴 Scraper error page {page} [{e.code}]: {e}")
+
                 except Exception as e:
-                    logging.error(f"🔴 Página {page} falló completamente: {e}")
+                    logging.error(f"🔴 Unexpected error page {page}: {e}")
 
             return allResults
 
-        except Exception as e:
-            logging.exception(f"🔴 Error global en scraping: {e}")
+        except ScraperException as e:
+            logging.error(f"🔴 Scraper fatal error [{e.code}]: {e}")
             raise
-    
+
+        except Exception as e:
+            logging.exception(f"🔴 Global error: {e}")
+            raise

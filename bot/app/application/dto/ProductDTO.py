@@ -15,6 +15,3 @@ class ProductDTO(BaseModel):
         if isinstance(v, str) and not v.strip():
             return None
         return v
-
-
-    
