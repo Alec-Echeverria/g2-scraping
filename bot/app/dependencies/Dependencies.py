@@ -10,6 +10,7 @@ from app.application.services.scraper.Scraper import Scraper
 from app.infrastructure.filesystem.Workspace import Workspace
 from app.application.services.ScraperService import ScraperService
 from app.infrastructure.browser.BrowserManager import BrowserManager
+from app.infrastructure.metrics.MetricsCollector import MetricsCollector
 from app.infrastructure.browser.FingerprintGenerator import FingerprintGenerator
 
 class Dependencies(containers.DeclarativeContainer):
@@ -23,6 +24,12 @@ class Dependencies(containers.DeclarativeContainer):
     workspace = providers.Singleton(
         Workspace,
         basePath = settings.provided.file.tempFolder
+    )
+    
+    metricsCollector = providers.Singleton(
+        MetricsCollector,
+        workspace=settings.provided.file.tempFolder,
+        reportEvery = settings.provided.scraper.attemps()
     )
     
     # FingerprintGenerator
@@ -55,6 +62,9 @@ class Dependencies(containers.DeclarativeContainer):
         Scraper,
         browserManager = browserManager,
         url = settings.provided.scraper.url,
+        pages = settings.provided.scraper.pages,
+        retries = settings.provided.scraper.retries,
+
     )
     
     # Service 
@@ -62,6 +72,7 @@ class Dependencies(containers.DeclarativeContainer):
         ScraperService,
         scraper = scraper,
         workspace = workspace,
+        metricsCollector = metricsCollector,
         persistent = settings.provided.file.persistent,
     )
     

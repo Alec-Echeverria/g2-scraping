@@ -20,9 +20,11 @@ class proxiesSettings(EnvConfig):
         return v
 
 class ScraperSettings(EnvConfig):
+    pages:int = Field(..., alias="PAGES")
     url: str  = Field(..., alias="BASE_URL")
+    retries:int = Field(..., alias="RETRIES")
     attemps:int = Field(..., alias="ATTEMPS")
-    
+        
 class NavigatorSettings(EnvConfig):
     binaryLocation: str  = Field(..., alias="BINARY_LOCATION")
     remoteUrl: Optional[str] = Field(..., alias="REMOTE_URL")

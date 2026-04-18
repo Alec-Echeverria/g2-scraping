@@ -6,10 +6,11 @@ from app.domain.interfaces.IScraper import IScraper
 from app.domain.interfaces.IBrowserManager import IBrowserManager
 
 class Scraper(IScraper):
-    def __init__(self, url: str, browserManager: IBrowserManager):
+    def __init__(self, url: str, browserManager: IBrowserManager, retries:int, pages:int):
         self.url = url
+        self.pages = pages
+        self.retries = retries
         self.browserManager = browserManager
-        self.retries = 2
     
     async def _retry(self, fn, *args, **kwargs):
         lastException = None
@@ -161,10 +162,17 @@ class Scraper(IScraper):
             await asyncio.sleep(5)
 
             totalPages = await self._getTotalPages(tab)
+            
+            if self.pages > totalPages:
+                raise ValueError(
+                    f"Configuración inválida: pages solicitadas ({self.pages}) "
+                    f"es mayor que el total de páginas disponibles ({totalPages})"
+                )
+                            
             logging.info(f"Total páginas detectadas: {totalPages}")
 
             # Loop de páginas
-            for page in range(1, totalPages + 1):
+            for page in range(1, min(self.pages, totalPages) + 1):
                 url = f"{self.url}?page={page}"
                 logging.info(f"Página: {page}")
 
@@ -182,6 +190,5 @@ class Scraper(IScraper):
 
         except Exception as e:
             logging.exception(f"🔴 Error global en scraping: {e}")
-            await self.browserManager.restart()
-            return []
+            raise
     
