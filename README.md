@@ -100,7 +100,8 @@ Se utiliza un navegador controlado mediante **CDP (Chrome DevTools Protocol)**:
 ## Estrategia anti-bloqueo
 
 * Rotación de proxies
-* Rotación de fingerprint (User-Agent)
+* Fingerprint dinámico por sesión
+* Variación de User-Agent
 * Perfiles temporales por ejecución
 * Eliminación de flags de automatización
 * Simulación de comportamiento humano (mouse timing)
@@ -111,10 +112,29 @@ Se utiliza un navegador controlado mediante **CDP (Chrome DevTools Protocol)**:
 
 El sistema implementa:
 
-* Reintentos automáticos
-* Reinicio completo del navegador ante fallos
-* Validación de carga del DOM
-* Detección de bloqueos (ausencia de datos)
+* Retry automático con reintentos controlados
+* Reinicio del navegador ante fallos críticos
+* Validación de carga del DOM antes de extracción
+* Detección de bloqueos por ausencia de datos
+* Recuperación automática por tipo de error
+
+---
+## Manejo de excepciones
+
+Se implementa un sistema estructurado de errores con clasificación:
+
+* DOM errors
+* Timeout errors
+* Network failures
+* Proxy errors
+* Blocking detection
+
+Incluye:
+
+* Códigos de error estandarizados
+* Reintentos con trazabilidad
+* Evidencia por ejecución (screenshots + logs)
+* Registro de fallos globales
 
 ---
 
@@ -153,8 +173,44 @@ Para persistir datos:
 ```
 PERSISTENT=true
 ```
+---
+
+## Métricas del sistema
+
+Se implementa un sistema automático de observabilidad mediante `MetricsCollector`.
+
+Métricas registradas:
+* Total de ejecuciones
+* Tasa de éxito
+* Fallos
+* Latencia promedio
+* Excepciones agrupadas
 
 ---
+
+## Reporte automático
+
+Se genera un reporte JSON cada **N ejecuciones (configurable)**:
+```
+metrics_report_{n}.json
+```
+Ejemplo:
+```
+{
+  "totalExecutions": 100,
+  "successRate": 88.5,
+  "failures": 11,
+  "avgLatencySec": 6.32,
+  "exceptions": {
+    "TIMEOUT": 6,
+    "DOM_ERROR": 3,
+    "BLOCKED": 2
+  }
+}
+```
+
+---
+
 
 ## Variables de entorno
 
@@ -175,19 +231,43 @@ FOLDER=temp
 PERSISTENT=true
 
 # PROXY
-PROXIES=["http://ip:puerto", null]
+PROXIES=[null]
 
 # SCRAPER
 BASE_URL="https://www.g2.com/categories/crm"
+PAGES=1
+RETRIES=1
+
+# NAVIGATOR
+BINARY_LOCATION="/usr/bin/microsoft-edge"
+REMOTE_URL=null
+EXTRA_ARGS=["--no-sandbox","--disable-dev-shm-usage","--disable-gpu"]
+
+# FINGERPRINT
+REGION_CODE="CO"
+SEED="default_seed"
+OS_TYPE="Linux x86_64"
+CONFIG_PATH="fingerprint_config.json"
 ```
 
 ### 🔹 Explicación
+| Variable          | Descripción                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `ATTEMPS`         | Número total de ejecuciones del loop principal del scraper. Controla cuántas iteraciones completas se realizarán. |
+| `FOLDER`          | Carpeta base donde se almacenan los outputs generados por cada ejecución.                                         |
+| `PERSISTENT`      | Define si los datos generados se conservan (`true`) o se eliminan tras la ejecución (`false`).                    |
+| `PROXIES`         | Lista de proxies utilizados para rotación. Permite reducir bloqueos y mejorar estabilidad de conexión.            |
+| `BASE_URL`        | URL inicial del sitio objetivo desde donde comienza el scraping.                                                  |
+| `PAGES`           | Número máximo de páginas a recorrer por ejecución del scraper.                                                    |
+| `RETRIES`         | Cantidad de reintentos permitidos por operación antes de marcar fallo.                                            |
+| `BINARY_LOCATION` | Ruta del ejecutable del navegador (Chromium / Edge). Se usa para ejecutar el browser en modo controlado.          |
+| `REMOTE_URL`      | URL de navegador remoto (CDP/WebDriver). Si es `null`, se usa navegador local.                                    |
+| `EXTRA_ARGS`      | Argumentos adicionales para el navegador (optimización, seguridad y rendimiento).                                 |
+| `REGION_CODE`     | Código de región utilizado para generar fingerprints coherentes (ej: CO, US, ES).                                 |
+| `SEED`            | Semilla base para la generación de fingerprints, permite reproducibilidad de sesiones.                            |
+| `OS_TYPE`         | Sistema operativo simulado para el fingerprint (ej: Linux x86_64, Win32).                                         |
+| `CONFIG_PATH`     | Ruta del archivo JSON que contiene la configuración base de fingerprints.                                         |
 
-* **ATTEMPS** → número de ejecuciones
-* **BASE_URL** → URL objetivo
-* **PROXIES** → lista de proxies rotativos
-* **FOLDER** → carpeta de salida
-* **PERSISTENT** → guardar o eliminar datos
 
 ---
 
