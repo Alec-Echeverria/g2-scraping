@@ -1,0 +1,75 @@
+{
+  "os_profiles": [
+    {
+      "platform": "Linux x86_64",
+      "userAgents": [
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
+      ],
+      "webglRenderers": [
+        "ANGLE (Intel, Mesa Intel(R) UHD Graphics 630 (CFL GT2), OpenGL 4.6)",
+        "ANGLE (AMD, Radeon RX 580 Series (POLARIS10), OpenGL 4.6)"
+      ],
+      "concurrencyLevels": [2, 4, 8],
+      "memoryLevels": [4, 8, 16],
+      "maxTouchPoints": [0]
+    },
+
+    {
+      "platform": "Win32",
+      "userAgents": [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
+      ],
+      "webglRenderers": [
+        "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)",
+        "ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0)"
+      ],
+      "concurrencyLevels": [4, 8, 16],
+      "memoryLevels": [4, 8, 16],
+      "maxTouchPoints": [0, 1]
+    }
+  ],
+
+  "regions": {
+    "CO": {
+      "timezone": "America/Bogota",
+      "timezoneOffset": 300,
+      "languages": ["es-CO", "es", "en-US"],
+      "language": "es-CO",
+      "connection": {
+        "effectiveType": "4g",
+        "rtt": 40,
+        "downlink": 12,
+        "saveData": false
+      }
+    }
+  },
+
+  "resolutions": [
+    {
+      "width": 1920,
+      "height": 1080,
+      "pixelRatio": 1,
+      "colorDepth": 24,
+      "pixelDepth": 24,
+      "taskbarHeight": 40
+    },
+    {
+      "width": 1366,
+      "height": 768,
+      "pixelRatio": 1,
+      "colorDepth": 24,
+      "pixelDepth": 24,
+      "taskbarHeight": 40
+    },
+    {
+      "width": 1536,
+      "height": 864,
+      "pixelRatio": 1,
+      "colorDepth": 24,
+      "pixelDepth": 24,
+      "taskbarHeight": 40
+    }
+  ]
+}
