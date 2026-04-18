@@ -7,9 +7,9 @@ from app.domain.interfaces.IBrowserManager import IBrowserManager
 
 from app.config.config import Settings, loadJson
 from app.application.services.scraper.Scraper import Scraper
+from app.infrastructure.filesystem.Workspace import Workspace
 from app.application.services.ScraperService import ScraperService
 from app.infrastructure.browser.BrowserManager import BrowserManager
-from app.infrastructure.filesystem.TempWorkspace import TempWorkspace
 from app.infrastructure.browser.FingerprintGenerator import FingerprintGenerator
 
 class Dependencies(containers.DeclarativeContainer):
@@ -20,8 +20,8 @@ class Dependencies(containers.DeclarativeContainer):
     )
     
     # Filesystem 
-    tempWorkspace = providers.Singleton(
-        TempWorkspace,
+    workspace = providers.Singleton(
+        Workspace,
         basePath = settings.provided.file.tempFolder
     )
     
@@ -61,7 +61,7 @@ class Dependencies(containers.DeclarativeContainer):
     scraperService:providers.Singleton[IScraperService] = providers.Singleton(
         ScraperService,
         scraper = scraper,
-        tempWorkspace = tempWorkspace,
+        workspace = workspace,
         persistent = settings.provided.file.persistent,
     )
     

@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from contextlib import contextmanager
 
-class TempWorkspace:
+class Workspace:
     def __init__(self, basePath: Path):
         self.basePath = basePath
         self.logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class TempWorkspace:
                 self.logger.error(f"🔴 Error al eliminar la carpeta {path}: {e}")
 
     @contextmanager
-    def useTempFolder(self, folderName: str, persistent: bool = False):
+    def useFolder(self, folderName: str, persistent: bool = False):
         path = self._createFolder(folderName)
         try:
             yield path
